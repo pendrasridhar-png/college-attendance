@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
 function bufferToBase64(buffer: ArrayBuffer) {
@@ -9,6 +10,9 @@ function bufferToBase64(buffer: ArrayBuffer) {
 export default function RegisterPage() {
   const [name, setName] = useState('');
   const [rollNo, setRollNo] = useState('');
+  const [studentClass, setStudentClass] = useState('CSE');
+  const [section, setSection] = useState('A');
+  const [yearOfStudy, setYearOfStudy] = useState('1st Year');
   const [photoData, setPhotoData] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [status, setStatus] = useState('');
@@ -78,6 +82,9 @@ export default function RegisterPage() {
         {
           student_name: name.trim(),
           roll_no: rollNo.toUpperCase().trim(),
+          student_class: studentClass,
+          section: section,
+          year_of_study: yearOfStudy,
           credential_id: credentialId,
           photo_url: photoData,
         },
@@ -89,7 +96,7 @@ export default function RegisterPage() {
       }
 
       localStorage.setItem('registered_roll', rollNo.toUpperCase().trim());
-      setStatus('✅ Registration Complete! Face & Fingerprint saved.');
+      setStatus('✅ Registration Complete! You can now log in to your dashboard.');
     } catch (err: any) {
       setStatus(`❌ Biometric Error: ${err?.message || 'Device biometric not supported'}`);
     }
@@ -97,8 +104,8 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center">
-      <h1 className="text-2xl font-bold mb-2">Student Enrollment</h1>
-      <p className="text-slate-400 text-sm mb-6 text-center">One-time Face Scan & Fingerprint Registration</p>
+      <h1 className="text-2xl font-bold mb-2">Student Registration</h1>
+      <p className="text-slate-400 text-sm mb-6 text-center">Enter academic details, Face Scan & Fingerprint</p>
 
       <div className="w-full max-w-md bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
         <input
@@ -116,7 +123,50 @@ export default function RegisterPage() {
           className="w-full p-3 rounded-lg bg-slate-800 border border-slate-700 uppercase"
         />
 
-        {/* Step A: Face Capture */}
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Class / Branch</label>
+            <select
+              value={studentClass}
+              onChange={(e) => setStudentClass(e.target.value)}
+              className="w-full p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm"
+            >
+              <option value="CSE">CSE</option>
+              <option value="ECE">ECE</option>
+              <option value="EEE">EEE</option>
+              <option value="MECH">MECH</option>
+              <option value="CIVIL">CIVIL</option>
+              <option value="IT">IT</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Section</label>
+            <select
+              value={section}
+              onChange={(e) => setSection(e.target.value)}
+              className="w-full p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm"
+            >
+              <option value="A">Sec A</option>
+              <option value="B">Sec B</option>
+              <option value="C">Sec C</option>
+              <option value="D">Sec D</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Year</label>
+            <select
+              value={yearOfStudy}
+              onChange={(e) => setYearOfStudy(e.target.value)}
+              className="w-full p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm"
+            >
+              <option value="1st Year">1st Year</option>
+              <option value="2nd Year">2nd Year</option>
+              <option value="3rd Year">3rd Year</option>
+              <option value="4th Year">4th Year</option>
+            </select>
+          </div>
+        </div>
+
         <div className="bg-slate-800 p-4 rounded-xl text-center">
           {photoData ? (
             <div className="flex flex-col items-center gap-2">
@@ -137,7 +187,6 @@ export default function RegisterPage() {
           )}
         </div>
 
-        {/* Step B: Fingerprint / Face ID */}
         <button
           onClick={handleRegisterBiometrics}
           className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded-lg font-semibold"
@@ -145,7 +194,16 @@ export default function RegisterPage() {
           👆 Step 2: Register Fingerprint / Face ID
         </button>
 
-        {status && <p className="text-center font-medium pt-2">{status}</p>}
+        {status && (
+          <div className="text-center space-y-2 pt-2">
+            <p className="font-medium">{status}</p>
+            {status.startsWith('✅') && (
+              <Link href="/student" className="inline-block bg-emerald-600 px-4 py-2 rounded-lg text-sm font-semibold">
+                Go to Student Login →
+              </Link>
+            )}
+          </div>
+        )}
       </div>
     </main>
   );

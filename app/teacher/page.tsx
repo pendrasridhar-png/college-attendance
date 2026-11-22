@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-// Change this to your own secret Admin PIN
 const MASTER_ADMIN_PIN = 'ADMIN123';
 
 export default function FacultyDashboardPage() {
@@ -11,14 +10,12 @@ export default function FacultyDashboardPage() {
   const [currentUserLabel, setCurrentUserLabel] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Attendance & Roster State
   const [students, setStudents] = useState<any[]>([]);
   const [todayPresent, setTodayPresent] = useState<Set<string>>(new Set());
   const [filterClass, setFilterClass] = useState('ALL');
   const [filterSection, setFilterSection] = useState('ALL');
   const [filterYear, setFilterYear] = useState('ALL');
 
-  // Admin: Pre-authorized Faculty Management State
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [newFacultyName, setNewFacultyName] = useState('');
   const [newSubjectClass, setNewSubjectClass] = useState('');
@@ -29,7 +26,6 @@ export default function FacultyDashboardPage() {
     const entered = pinInput.trim();
     if (!entered) return setLoginError('Enter your Admin PIN or Faculty Access Code.');
 
-    // 1. Check Master Admin PIN (You)
     if (entered === MASTER_ADMIN_PIN) {
       setRole('admin');
       setCurrentUserLabel('Master Admin (You)');
@@ -37,7 +33,6 @@ export default function FacultyDashboardPage() {
       return;
     }
 
-    // 2. Check Pre-Authorized Faculty Access Code
     const { data: fac } = await supabase
       .from('faculty_access')
       .select('*')
@@ -55,7 +50,7 @@ export default function FacultyDashboardPage() {
   };
 
   const fetchData = async () => {
-    const today = new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toISOString().slice(0, 10);
 
     const { data: studentList } = await supabase
       .from('students')
@@ -65,7 +60,7 @@ export default function FacultyDashboardPage() {
     const { data: attList } = await supabase
       .from('daily_attendance')
       .select('roll_no')
-      .eq('attendance_date', today);
+      .eq('attendance_date', todayStr);
 
     setStudents(studentList || []);
     setTodayPresent(new Set((attList || []).map((a) => a.roll_no)));
@@ -107,7 +102,6 @@ export default function FacultyDashboardPage() {
     fetchData();
   };
 
-  // Locked Login Gate
   if (!role) {
     return (
       <main className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center justify-center">
@@ -146,7 +140,6 @@ export default function FacultyDashboardPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center">
       <div className="w-full max-w-4xl">
-        {/* Top Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold">Faculty Attendance Dashboard</h1>
@@ -179,7 +172,6 @@ export default function FacultyDashboardPage() {
           </div>
         </div>
 
-        {/* Admin-Only Faculty Access Manager */}
         {role === 'admin' && showManager && (
           <div className="bg-slate-900 p-5 rounded-2xl border border-purple-500/40 mb-6 space-y-4">
             <h2 className="font-bold text-lg text-purple-300">Pre-Authorize Faculty Before Class (Optional)</h2>
@@ -240,7 +232,59 @@ export default function FacultyDashboardPage() {
           </div>
         )}
 
-        {/* Filters */}
         <div className="grid grid-cols-3 gap-3 mb-6 bg-slate-900 p-4 rounded-xl border border-slate-800">
           <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm">
             <option value="ALL">All Classes</option>
+            <option value="CSE">CSE</option>
+            <option value="ECE">ECE</option>
+            <option value="EEE">EEE</option>
+            <option value="MECH">MECH</option>
+            <option value="CIVIL">CIVIL</option>
+            <option value="IT">IT</option>
+          </select>
+          <select value={filterSection} onChange={(e) => setFilterSection(e.target.value)} className="p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm">
+            <option value="ALL">All Sections</option>
+            <option value="A">Section A</option>
+            <option value="B">Section B</option>
+            <option value="C">Section C</option>
+            <option value="D">Section D</option>
+          </select>
+          <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm">
+            <option value="ALL">All Years</option>
+            <option value="1st Year">1st Year</option>
+            <option value="2nd Year">2nd Year</option>
+            <option value="3rd Year">3rd Year</option>
+            <option value="4th Year">4th Year</option>
+          </select>
+        </div>
+
+        <div className="space-y-3">
+          {filtered.length === 0 && (
+            <p className="text-center text-slate-500 py-8">No registered students match the selected filters.</p>
+          )}
+          {filtered.map((s) => {
+            const isPresent = todayPresent.has(s.roll_no);
+            return (
+              <div key={s.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  {s.photo_url && (
+                    <img src={s.photo_url} alt={s.student_name} className="w-12 h-12 rounded-full object-cover" />
+                  )}
+                  <div>
+                    <p className="font-bold">{s.student_name}</p>
+                    <p className="text-xs text-slate-400">
+                      {s.roll_no} • {s.student_class} - Sec {s.section} • {s.year_of_study}
+                    </p>
+                  </div>
+                </div>
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${isPresent ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                  {isPresent ? 'Present Today' : 'Absent'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </main>
+  );
+}
