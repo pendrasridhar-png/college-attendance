@@ -1,9 +1,7 @@
-'use client';
+﻿'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-
-const MASTER_ADMIN_PIN = 'ADMIN123';
 
 const HOURS = [
   'Hour 1 (9:15 - 10:10)',
@@ -51,6 +49,15 @@ export default function StaffAdminDashboardPage() {
 
   const classKey = `${filterCourse}_${filterClass}_${filterSection}_${filterYear}`;
 
+  const callAdminApi = async (action: string, payload?: any) => {
+    const res = await fetch('/api/admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: adminPin.trim(), action, payload }),
+    });
+    return res.json();
+  };
+
   const handleStaffLogin = async () => {
     if (!staffCode.trim() || !staffName.trim() || !staffSubject.trim()) {
       return setLoginError('Enter your Staff Credential Code, Name, and Subject.');
@@ -86,12 +93,14 @@ export default function StaffAdminDashboardPage() {
     setLoginError('');
   };
 
-  const handleAdminLogin = () => {
-    if (adminPin.trim() === MASTER_ADMIN_PIN) {
+  const handleAdminLogin = async () => {
+    if (!adminPin.trim()) return setLoginError('Enter your Master Admin PIN.');
+    const data = await callAdminApi('verify');
+    if (data.ok) {
       setRole('admin');
       setLoginError('');
     } else {
-      setLoginError('❌ Incorrect Master Admin PIN.');
+      setLoginError(`❌ ${data.error || 'Incorrect Master Admin PIN.'}`);
     }
   };
 
@@ -177,15 +186,13 @@ export default function StaffAdminDashboardPage() {
     if (!newFacName.trim() || !newFacCode.trim()) {
       return alert('Enter Faculty Name and Credential Code!');
     }
-    const { error } = await supabase.from('faculty_access').insert([
-      {
-        faculty_name: newFacName.trim(),
-        subject_class: newFacDept.trim() || 'All Classes',
-        access_code: newFacCode.toUpperCase().trim(),
-        is_active: true,
-      },
-    ]);
-    if (error) return alert(`Error: ${error.message}`);
+    const res = await callAdminApi('add_faculty', {
+      faculty_name: newFacName.trim(),
+      subject_class: newFacDept.trim() || 'All Classes',
+      access_code: newFacCode.toUpperCase().trim(),
+      is_active: true,
+    });
+    if (!res.ok) return alert(`Error: ${res.error}`);
     setNewFacName('');
     setNewFacDept('');
     setNewFacCode('');
@@ -193,8 +200,44 @@ export default function StaffAdminDashboardPage() {
   };
 
   const toggleFacultyStatus = async (id: number, currentStatus: boolean) => {
-    await supabase.from('faculty_access').update({ is_active: !currentStatus }).eq('id', id);
+    const res = await callAdminApi('toggle_faculty', { id, is_active: !currentStatus });
+    if (!res.ok) return alert(`Error: ${res.error}`);
     fetchRosterAndAttendance();
+  };
+
+  const handleResetStudent = async (rollNo: string, name: string) => {
+    if (!confirm(`Reset biometric registration for ${name} (${rollNo})? They will need to re-register.`)) return;
+    const res = await callAdminApi('delete_student', { roll_no: rollNo });
+    if (!res.ok) return alert(`Error: ${res.error}`);
+    fetchRosterAndAttendance();
+  };
+  const downloadCSV = () => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const rows = [
+      ['Date', 'Hour', 'Roll No', 'Student Name', 'Course', 'Branch', 'Section', 'Year', 'Status', 'Subject'],
+      ...students.map((s) => {
+        const sub = hourAttendance.get(s.roll_no);
+        return [
+          todayStr,
+          selectedHour,
+          s.roll_no,
+          `"${s.student_name}"`,
+          s.course || 'B.Tech',
+          s.student_class,
+          s.section,
+          s.year_of_study,
+          sub ? 'Present' : 'Absent',
+          sub || '-',
+        ];
+      }),
+    ];
+    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map((r) => r.join(',')).join('\n');
+    const link = document.createElement('a');
+    link.setAttribute('href', encodeURI(csvContent));
+    link.setAttribute('download', `Attendance_${todayStr}_${selectedHour.slice(0, 6)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleLogout = () => {
@@ -278,7 +321,7 @@ export default function StaffAdminDashboardPage() {
             <div className="space-y-3">
               <h1 className="text-xl font-bold text-center">Master Admin Portal</h1>
               <p className="text-xs text-slate-400 text-center">
-                Manage pre-authorized faculty credentials, class student counts, and attendance.
+                Server-verified admin portal for managing faculty access, class counts & student devices.
               </p>
               <input
                 type="password"
@@ -363,6 +406,12 @@ export default function StaffAdminDashboardPage() {
               </button>
             )}
             <button
+              onClick={downloadCSV}
+              className="bg-emerald-600 hover:bg-emerald-500 px-3.5 py-2 rounded-xl text-xs font-semibold"
+            >
+              📥 Export CSV
+            </button>
+            <button
               onClick={() => setShowPhotos(!showPhotos)}
               className="bg-slate-800 hover:bg-slate-700 px-3.5 py-2 rounded-xl text-xs font-semibold"
             >
@@ -382,7 +431,6 @@ export default function StaffAdminDashboardPage() {
             </button>
           </div>
         </div>
-
         {editingCount && (
           <div className="bg-indigo-500/10 border border-indigo-400/30 rounded-2xl p-4 mb-6 flex flex-col sm:flex-row gap-3 items-center">
             <div className="text-xs text-indigo-200 flex-1">
@@ -548,9 +596,20 @@ export default function StaffAdminDashboardPage() {
                     </p>
                   </div>
                 </div>
-                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${subjectMarked ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                  {subjectMarked ? `Present (${subjectMarked})` : 'Absent'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-semibold px-3 py-1 rounded-full ${subjectMarked ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                    {subjectMarked ? `Present (${subjectMarked})` : 'Absent'}
+                  </span>
+                  {role === 'admin' && (
+                    <button
+                      onClick={() => handleResetStudent(s.roll_no, s.student_name)}
+                      className="bg-slate-800 hover:bg-red-600/30 text-slate-400 hover:text-red-300 px-2.5 py-1 rounded-lg text-xs"
+                      title="Reset student device registration"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
