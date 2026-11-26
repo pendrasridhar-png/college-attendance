@@ -34,10 +34,15 @@ export default function StaffAdminDashboardPage() {
   // 5,000-Student Optimized Roster Filters
   const [filterCourse, setFilterCourse] = useState('B.Tech');
   const [filterClass, setFilterClass] = useState('CSE');
-  const [filterSection, setFilterSection] = useState('ALL');
-  const [filterYear, setFilterYear] = useState('ALL');
+  const [filterSection, setFilterSection] = useState('A');
+  const [filterYear, setFilterYear] = useState('1st Year');
   const [selectedHour, setSelectedHour] = useState(HOURS);
   const [showPhotos, setShowPhotos] = useState(false);
+
+  // Editable Total Student Count State
+  const [customTotal, setCustomTotal] = useState<number | null>(null);
+  const [editingCount, setEditingCount] = useState(false);
+  const [countInput, setCountInput] = useState('');
 
   const [students, setStudents] = useState<any[]>([]);
   const [hourAttendance, setHourAttendance] = useState<Map<string, string>>(new Map());
@@ -48,6 +53,8 @@ export default function StaffAdminDashboardPage() {
   const [newFacDept, setNewFacDept] = useState('');
   const [newFacCode, setNewFacCode] = useState('');
   const [showManager, setShowManager] = useState(false);
+
+  const classKey = `${filterCourse}_${filterClass}_${filterSection}_${filterYear}`;
 
   const handleStaffLogin = async () => {
     if (!staffCode.trim() || !staffName.trim() || !staffSubject.trim()) {
@@ -66,7 +73,6 @@ export default function StaffAdminDashboardPage() {
       return setLoginError('❌ Invalid or inactive Staff Credential Code.');
     }
 
-    // Save active class session so timetable swaps are tracked
     await supabase.from('staff_sessions').upsert(
       [
         {
@@ -108,10 +114,27 @@ export default function StaffAdminDashboardPage() {
     setNewSubjectInput('');
   };
 
+  const saveCustomStudentCount = async () => {
+    const num = parseInt(countInput, 10);
+    if (isNaN(num) || num < 1) return alert('Enter a valid number of students (1 or more)!');
+
+    await supabase
+      .from('class_strength')
+      .upsert([{ class_key: classKey, total_students: num }], { onConflict: 'class_key' });
+
+    setCustomTotal(num);
+    setEditingCount(false);
+  };
+
+  const resetToAutoCount = async () => {
+    await supabase.from('class_strength').delete().eq('class_key', classKey);
+    setCustomTotal(null);
+    setEditingCount(false);
+  };
+
   const fetchRosterAndAttendance = async () => {
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    // Server-side filtered query (handles 5,000+ students without hitting 1,000-row cap)
     const columns = showPhotos
       ? 'id, student_name, roll_no, course, student_class, section, year_of_study, photo_url'
       : 'id, student_name, roll_no, course, student_class, section, year_of_study';
@@ -130,6 +153,13 @@ export default function StaffAdminDashboardPage() {
       .eq('attendance_date', todayStr)
       .eq('period_no', selectedHour);
 
+    const { data: strengthData } = await supabase
+      .from('class_strength')
+      .select('total_students')
+      .eq('class_key', classKey)
+      .single();
+
+    setCustomTotal(strengthData ? strengthData.total_students : null);
     setStudents(studentList || []);
     const map = new Map<string, string>();
     (attList || []).forEach((a) => map.set(a.roll_no, a.subject_name));
@@ -177,6 +207,7 @@ export default function StaffAdminDashboardPage() {
     setAdminPin('');
     setStaffCode('');
     setEditingSubject(false);
+    setEditingCount(false);
   };
 
   // Dual Staff / Admin Login Screen
@@ -236,26 +267,3 @@ export default function StaffAdminDashboardPage() {
                   value={staffHour}
                   onChange={(e) => setStaffHour(e.target.value)}
                   className="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-sm"
-                >
-                  {HOURS.map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-              </div>
-              <button
-                onClick={handleStaffLogin}
-                className="w-full bg-indigo-500 hover:bg-indigo-400 py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20"
-              >
-                Login & Open Class Dashboard
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <h1 className="text-xl font-bold text-center">Master Admin Portal</h1>
-              <p className="text-xs text-slate-400 text-center">
-                Manage pre-authorized faculty credentials and view all college attendance.
-              </p>
-              <input
-                type="password"
-                placeholder="Enter Master Admin PIN"
-                value={adminPin}

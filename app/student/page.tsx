@@ -20,12 +20,11 @@ const HOURS = [
   'Hour 7 (3:30 - 4:15)',
 ];
 
-
 export default function StudentDashboardPage() {
   const [rollNo, setRollNo] = useState('');
   const [studentProfile, setStudentProfile] = useState<any>(null);
   const [records, setRecords] = useState<any[]>([]);
-  const [selectedHour, setSelectedHour] = useState(HOURS);
+  const [selectedHour, setSelectedHour] = useState<string>(HOURS[0]);
   const [subjectName, setSubjectName] = useState('');
   const [status, setStatus] = useState('');
   const [markMsg, setMarkMsg] = useState('');
@@ -175,7 +174,6 @@ export default function StudentDashboardPage() {
         </div>
       ) : (
         <div className="w-full max-w-lg space-y-6">
-          {/* Live Anti-Screenshot Security Banner */}
           <div className="bg-emerald-500/15 border border-emerald-400/30 rounded-2xl px-4 py-2.5 flex items-center justify-between text-xs">
             <span className="text-emerald-300 font-semibold flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
@@ -184,7 +182,6 @@ export default function StudentDashboardPage() {
             <span className="font-mono text-white font-bold">{liveTime || 'Active'}</span>
           </div>
 
-          {/* Student Profile Card */}
           <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 flex items-center gap-4 shadow-xl">
             {studentProfile.photo_url && (
               <img
@@ -215,7 +212,6 @@ export default function StudentDashboardPage() {
             </div>
           </div>
 
-          {/* Mark Hour Attendance */}
           <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
             <h3 className="font-bold text-lg">Mark Class Hour Attendance</h3>
             <select
@@ -243,7 +239,6 @@ export default function StudentDashboardPage() {
             {markMsg && <p className="text-center text-sm font-medium text-emerald-400">{markMsg}</p>}
           </div>
 
-          {/* Attendance History */}
           <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 shadow-xl">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-lg">Attendance History</h3>
@@ -254,3 +249,6 @@ export default function StudentDashboardPage() {
 
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {records.length === 0 && (
+                <p className="text-sm text-slate-500 text-center py-4">No hours marked yet today.</p>
+              )}
+              {records.map((rec) => (
