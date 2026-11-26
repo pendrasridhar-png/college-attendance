@@ -3,7 +3,6 @@ import Link from 'next/link';
 export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex flex-col justify-between p-6">
-      {/* Top Navbar */}
       <header className="max-w-5xl w-full mx-auto flex items-center justify-between py-2">
         <div className="flex items-center gap-2.5">
           <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
@@ -14,7 +13,6 @@ export default function Home() {
         </span>
       </header>
 
-      {/* Main Dual-Portal Hero */}
       <section className="max-w-5xl w-full mx-auto my-auto py-10">
         <div className="text-center max-w-2xl mx-auto mb-12 space-y-3">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-300 bg-indigo-500/20 border border-indigo-400/30 px-3.5 py-1 rounded-full">
@@ -28,9 +26,7 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Two Distinct Login Cards */}
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Card 1: Student Portal */}
           <div className="group bg-slate-900/80 backdrop-blur-md border border-emerald-500/30 hover:border-emerald-400 rounded-3xl p-7 flex flex-col justify-between shadow-2xl transition">
             <div>
               <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-2xl mb-5">
@@ -58,7 +54,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Card 2: Staff & Admin Portal */}
           <div className="group bg-slate-900/80 backdrop-blur-md border border-indigo-500/30 hover:border-indigo-400 rounded-3xl p-7 flex flex-col justify-between shadow-2xl transition">
             <div>
               <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-2xl mb-5">
@@ -78,7 +73,7 @@ export default function Home() {
                 🔐 Staff Class Login
               </Link>
               <Link
-                href="/teacher?mode=admin"
+                href="/teacher"
                 className="block w-full bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 font-semibold text-center py-3 rounded-xl text-sm transition"
               >
                 🛡️ Admin Control & Permissions
@@ -88,7 +83,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="text-center text-xs text-slate-500 py-2">
         Hardware WebAuthn Biometrics • 7-Hour Timetable Support • Real-Time Cloud Sync
       </footer>
