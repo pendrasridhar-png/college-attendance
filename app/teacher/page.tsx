@@ -1,69 +1,139 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
 const MASTER_ADMIN_PIN = 'ADMIN123';
 
-export default function FacultyDashboardPage() {
-  const [pinInput, setPinInput] = useState('');
-  const [role, setRole] = useState<'admin' | 'faculty' | null>(null);
-  const [currentUserLabel, setCurrentUserLabel] = useState('');
+const HOURS = [
+  'Hour 1 (9:15 - 10:10)',
+  'Hour 2 (10:10 - 11:05)',
+  'Hour 3 (11:20 - 12:15)',
+  'Hour 4 (12:15 - 1:10)',
+  'Hour 5 (2:00 - 2:45)',
+  'Hour 6 (2:45 - 3:30)',
+  'Hour 7 (3:30 - 4:15)',
+];
+
+export default function StaffAdminDashboardPage() {
+  const [loginTab, setLoginTab] = useState<'staff' | 'admin'>('staff');
+  const [role, setRole] = useState<'staff' | 'admin' | null>(null);
   const [loginError, setLoginError] = useState('');
 
-  const [students, setStudents] = useState<any[]>([]);
-  const [todayPresent, setTodayPresent] = useState<Set<string>>(new Set());
-  const [filterClass, setFilterClass] = useState('ALL');
+  // Staff Login Inputs
+  const [staffCode, setStaffCode] = useState('');
+  const [staffName, setStaffName] = useState('');
+  const [staffSubject, setStaffSubject] = useState('');
+  const [staffHour, setStaffHour] = useState(HOURS);
+  const [editingSubject, setEditingSubject] = useState(false);
+  const [newSubjectInput, setNewSubjectInput] = useState('');
+
+  // Admin Login Input
+  const [adminPin, setAdminPin] = useState('');
+
+  // 5,000-Student Optimized Roster Filters
+  const [filterCourse, setFilterCourse] = useState('B.Tech');
+  const [filterClass, setFilterClass] = useState('CSE');
   const [filterSection, setFilterSection] = useState('ALL');
   const [filterYear, setFilterYear] = useState('ALL');
+  const [selectedHour, setSelectedHour] = useState(HOURS);
+  const [showPhotos, setShowPhotos] = useState(false);
 
+  const [students, setStudents] = useState<any[]>([]);
+  const [hourAttendance, setHourAttendance] = useState<Map<string, string>>(new Map());
+
+  // Admin: Pre-authorized Staff Manager
   const [facultyList, setFacultyList] = useState<any[]>([]);
-  const [newFacultyName, setNewFacultyName] = useState('');
-  const [newSubjectClass, setNewSubjectClass] = useState('');
-  const [newAccessCode, setNewAccessCode] = useState('');
+  const [newFacName, setNewFacName] = useState('');
+  const [newFacDept, setNewFacDept] = useState('');
+  const [newFacCode, setNewFacCode] = useState('');
   const [showManager, setShowManager] = useState(false);
 
-  const handleLogin = async () => {
-    const entered = pinInput.trim();
-    if (!entered) return setLoginError('Enter your Admin PIN or Faculty Access Code.');
-
-    if (entered === MASTER_ADMIN_PIN) {
-      setRole('admin');
-      setCurrentUserLabel('Master Admin (You)');
-      setLoginError('');
-      return;
+  const handleStaffLogin = async () => {
+    if (!staffCode.trim() || !staffName.trim() || !staffSubject.trim()) {
+      return setLoginError('Enter your Staff Credential Code, Name, and Subject.');
     }
 
+    const cleanCode = staffCode.toUpperCase().trim();
     const { data: fac } = await supabase
       .from('faculty_access')
       .select('*')
-      .eq('access_code', entered.toUpperCase())
+      .eq('access_code', cleanCode)
       .eq('is_active', true)
       .single();
 
-    if (fac) {
-      setRole('faculty');
-      setCurrentUserLabel(`${fac.faculty_name} (${fac.subject_class})`);
+    if (!fac) {
+      return setLoginError('❌ Invalid or inactive Staff Credential Code.');
+    }
+
+    // Save active class session so timetable swaps are tracked
+    await supabase.from('staff_sessions').upsert(
+      [
+        {
+          access_code: cleanCode,
+          faculty_name: staffName.trim(),
+          subject_name: staffSubject.trim(),
+          hour_no: staffHour,
+          is_open: true,
+        },
+      ],
+      { onConflict: 'access_code' }
+    );
+
+    setSelectedHour(staffHour);
+    setRole('staff');
+    setLoginError('');
+  };
+
+  const handleAdminLogin = () => {
+    if (adminPin.trim() === MASTER_ADMIN_PIN) {
+      setRole('admin');
       setLoginError('');
     } else {
-      setLoginError('❌ Invalid or inactive PIN / Faculty Access Code.');
+      setLoginError('❌ Incorrect Master Admin PIN.');
     }
   };
 
-  const fetchData = async () => {
+  const handleTimetableSubjectChange = async () => {
+    if (!newSubjectInput.trim()) return alert('Enter the new subject name!');
+    const updatedSub = newSubjectInput.trim();
+    setStaffSubject(updatedSub);
+
+    await supabase
+      .from('staff_sessions')
+      .update({ subject_name: updatedSub, hour_no: selectedHour })
+      .eq('access_code', staffCode.toUpperCase().trim());
+
+    setEditingSubject(false);
+    setNewSubjectInput('');
+  };
+
+  const fetchRosterAndAttendance = async () => {
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    const { data: studentList } = await supabase
-      .from('students')
-      .select('*')
-      .order('roll_no', { ascending: true });
+    // Server-side filtered query (handles 5,000+ students without hitting 1,000-row cap)
+    const columns = showPhotos
+      ? 'id, student_name, roll_no, course, student_class, section, year_of_study, photo_url'
+      : 'id, student_name, roll_no, course, student_class, section, year_of_study';
+
+    let query = supabase.from('students').select(columns).order('roll_no', { ascending: true });
+    if (filterCourse !== 'ALL') query = query.eq('course', filterCourse);
+    if (filterClass !== 'ALL') query = query.eq('student_class', filterClass);
+    if (filterSection !== 'ALL') query = query.eq('section', filterSection);
+    if (filterYear !== 'ALL') query = query.eq('year_of_study', filterYear);
+
+    const { data: studentList } = await query;
 
     const { data: attList } = await supabase
       .from('daily_attendance')
-      .select('roll_no')
-      .eq('attendance_date', todayStr);
+      .select('roll_no, subject_name')
+      .eq('attendance_date', todayStr)
+      .eq('period_no', selectedHour);
 
     setStudents(studentList || []);
-    setTodayPresent(new Set((attList || []).map((a) => a.roll_no)));
+    const map = new Map<string, string>();
+    (attList || []).forEach((a) => map.set(a.roll_no, a.subject_name));
+    setHourAttendance(map);
 
     if (role === 'admin') {
       const { data: facs } = await supabase
@@ -75,216 +145,117 @@ export default function FacultyDashboardPage() {
   };
 
   useEffect(() => {
-    if (role) fetchData();
-  }, [role]);
+    if (role) fetchRosterAndAttendance();
+  }, [role, filterCourse, filterClass, filterSection, filterYear, selectedHour, showPhotos]);
 
   const addFacultyPermission = async () => {
-    if (!newFacultyName.trim() || !newAccessCode.trim()) {
-      return alert('Enter Faculty Name and an Access Code!');
+    if (!newFacName.trim() || !newFacCode.trim()) {
+      return alert('Enter Faculty Name and Credential Code!');
     }
     const { error } = await supabase.from('faculty_access').insert([
       {
-        faculty_name: newFacultyName.trim(),
-        subject_class: newSubjectClass.trim() || 'General Class',
-        access_code: newAccessCode.toUpperCase().trim(),
+        faculty_name: newFacName.trim(),
+        subject_class: newFacDept.trim() || 'All Classes',
+        access_code: newFacCode.toUpperCase().trim(),
         is_active: true,
       },
     ]);
     if (error) return alert(`Error: ${error.message}`);
-    setNewFacultyName('');
-    setNewSubjectClass('');
-    setNewAccessCode('');
-    fetchData();
+    setNewFacName('');
+    setNewFacDept('');
+    setNewFacCode('');
+    fetchRosterAndAttendance();
   };
 
   const toggleFacultyStatus = async (id: number, currentStatus: boolean) => {
     await supabase.from('faculty_access').update({ is_active: !currentStatus }).eq('id', id);
-    fetchData();
+    fetchRosterAndAttendance();
   };
 
+  const handleLogout = () => {
+    setRole(null);
+    setAdminPin('');
+    setStaffCode('');
+    setEditingSubject(false);
+  };
+
+  // Dual Staff / Admin Login Screen
   if (!role) {
     return (
-      <main className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center justify-center">
-        <div className="w-full max-w-md bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
-          <h1 className="text-2xl font-bold text-center">Restricted Faculty Portal</h1>
-          <p className="text-sm text-slate-400 text-center">
-            Only authorized faculty taking class and Admin can access attendance records.
-          </p>
-          <input
-            type="password"
-            placeholder="Enter Admin PIN or Pre-Assigned Faculty Code"
-            value={pinInput}
-            onChange={(e) => setPinInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-            className="w-full p-3 rounded-lg bg-slate-800 border border-slate-700 text-center tracking-widest"
-          />
-          <button
-            onClick={handleLogin}
-            className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-lg font-semibold"
-          >
-            Unlock Dashboard
-          </button>
-          {loginError && <p className="text-center text-red-400 text-sm font-medium">{loginError}</p>}
+      <main className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white p-6 flex flex-col items-center justify-center">
+        <div className="w-full max-w-md mb-4">
+          <Link href="/" className="text-xs text-slate-400 hover:text-white">← Back to Home</Link>
         </div>
-      </main>
-    );
-  }
 
-  const filtered = students.filter((s) => {
-    if (filterClass !== 'ALL' && s.student_class !== filterClass) return false;
-    if (filterSection !== 'ALL' && s.section !== filterSection) return false;
-    if (filterYear !== 'ALL' && s.year_of_study !== filterYear) return false;
-    return true;
-  });
-
-  return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center">
-      <div className="w-full max-w-4xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Faculty Attendance Dashboard</h1>
-            <p className="text-xs text-blue-400 font-medium">Logged in as: {currentUserLabel}</p>
-            <p className="text-sm text-slate-400 mt-1">
-              Present Today: <strong className="text-emerald-400">{todayPresent.size}</strong> / {students.length} Registered
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {role === 'admin' && (
-              <button
-                onClick={() => setShowManager(!showManager)}
-                className="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg text-sm font-semibold"
-              >
-                {showManager ? 'Hide Faculty Permissions' : '🔑 Manage Faculty Access'}
-              </button>
-            )}
-            <button onClick={fetchData} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold">
-              Refresh
+        <div className="w-full max-w-md bg-slate-900/90 backdrop-blur p-7 rounded-3xl border border-slate-800 space-y-5 shadow-2xl">
+          <div className="grid grid-cols-2 bg-slate-800 p-1 rounded-xl text-sm font-semibold">
+            <button
+              onClick={() => { setLoginTab('staff'); setLoginError(''); }}
+              className={`py-2 rounded-lg transition ${loginTab === 'staff' ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}
+            >
+              👨‍🏫 Staff Class Login
             </button>
             <button
-              onClick={() => {
-                setRole(null);
-                setPinInput('');
-              }}
-              className="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm"
+              onClick={() => { setLoginTab('admin'); setLoginError(''); }}
+              className={`py-2 rounded-lg transition ${loginTab === 'admin' ? 'bg-purple-600 text-white' : 'text-slate-400'}`}
             >
-              Lock
+              🛡️ Admin Login
             </button>
           </div>
-        </div>
 
-        {role === 'admin' && showManager && (
-          <div className="bg-slate-900 p-5 rounded-2xl border border-purple-500/40 mb-6 space-y-4">
-            <h2 className="font-bold text-lg text-purple-300">Pre-Authorize Faculty Before Class (Optional)</h2>
-            <p className="text-xs text-slate-400">
-              Create or toggle access codes for faculty taking class. Deactivate anytime when their class ends.
-            </p>
-            <div className="grid sm:grid-cols-4 gap-2">
+          {loginTab === 'staff' ? (
+            <div className="space-y-3">
+              <h1 className="text-xl font-bold text-center">Faculty Class Check-In</h1>
+              <p className="text-xs text-slate-400 text-center">
+                Enter your pre-authorized Staff Code along with your Name, Subject & Class Hour.
+              </p>
               <input
                 type="text"
-                placeholder="Faculty Name (e.g., Prof. Rao)"
-                value={newFacultyName}
-                onChange={(e) => setNewFacultyName(e.target.value)}
-                className="p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm"
+                placeholder="Staff Credential Code (e.g., RAO101)"
+                value={staffCode}
+                onChange={(e) => setStaffCode(e.target.value)}
+                className="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-sm uppercase"
               />
               <input
                 type="text"
-                placeholder="Subject / Class (e.g., CSE-A)"
-                value={newSubjectClass}
-                onChange={(e) => setNewSubjectClass(e.target.value)}
-                className="p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm"
+                placeholder="Your Full Name (e.g., Prof. K. Rao)"
+                value={staffName}
+                onChange={(e) => setStaffName(e.target.value)}
+                className="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-sm"
               />
               <input
                 type="text"
-                placeholder="Access Code (e.g., RAO101)"
-                value={newAccessCode}
-                onChange={(e) => setNewAccessCode(e.target.value)}
-                className="p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm uppercase"
+                placeholder="Subject Name (e.g., Operating Systems)"
+                value={staffSubject}
+                onChange={(e) => setStaffSubject(e.target.value)}
+                className="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-sm"
               />
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Current Class Hour</label>
+                <select
+                  value={staffHour}
+                  onChange={(e) => setStaffHour(e.target.value)}
+                  className="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-sm"
+                >
+                  {HOURS.map((h) => (
+                    <option key={h} value={h}>{h}</option>
+                  ))}
+                </select>
+              </div>
               <button
-                onClick={addFacultyPermission}
-                className="bg-purple-600 hover:bg-purple-500 rounded-lg font-semibold text-sm py-2.5"
+                onClick={handleStaffLogin}
+                className="w-full bg-indigo-500 hover:bg-indigo-400 py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20"
               >
-                + Grant Access
+                Login & Open Class Dashboard
               </button>
             </div>
-
-            {facultyList.length > 0 && (
-              <div className="space-y-2 pt-2">
-                {facultyList.map((f) => (
-                  <div key={f.id} className="bg-slate-800 p-3 rounded-lg flex items-center justify-between text-sm">
-                    <div>
-                      <span className="font-bold">{f.faculty_name}</span>{' '}
-                      <span className="text-slate-400">({f.subject_class})</span> • Code:{' '}
-                      <span className="font-mono text-purple-300 font-bold">{f.access_code}</span>
-                    </div>
-                    <button
-                      onClick={() => toggleFacultyStatus(f.id, f.is_active)}
-                      className={`px-3 py-1 rounded-md text-xs font-semibold ${
-                        f.is_active ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'
-                      }`}
-                    >
-                      {f.is_active ? 'Active (Click to Revoke)' : 'Inactive (Click to Enable)'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="grid grid-cols-3 gap-3 mb-6 bg-slate-900 p-4 rounded-xl border border-slate-800">
-          <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm">
-            <option value="ALL">All Classes</option>
-            <option value="CSE">CSE</option>
-            <option value="ECE">ECE</option>
-            <option value="EEE">EEE</option>
-            <option value="MECH">MECH</option>
-            <option value="CIVIL">CIVIL</option>
-            <option value="IT">IT</option>
-          </select>
-          <select value={filterSection} onChange={(e) => setFilterSection(e.target.value)} className="p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm">
-            <option value="ALL">All Sections</option>
-            <option value="A">Section A</option>
-            <option value="B">Section B</option>
-            <option value="C">Section C</option>
-            <option value="D">Section D</option>
-          </select>
-          <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="p-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm">
-            <option value="ALL">All Years</option>
-            <option value="1st Year">1st Year</option>
-            <option value="2nd Year">2nd Year</option>
-            <option value="3rd Year">3rd Year</option>
-            <option value="4th Year">4th Year</option>
-          </select>
-        </div>
-
-        <div className="space-y-3">
-          {filtered.length === 0 && (
-            <p className="text-center text-slate-500 py-8">No registered students match the selected filters.</p>
-          )}
-          {filtered.map((s) => {
-            const isPresent = todayPresent.has(s.roll_no);
-            return (
-              <div key={s.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  {s.photo_url && (
-                    <img src={s.photo_url} alt={s.student_name} className="w-12 h-12 rounded-full object-cover" />
-                  )}
-                  <div>
-                    <p className="font-bold">{s.student_name}</p>
-                    <p className="text-xs text-slate-400">
-                      {s.roll_no} • {s.student_class} - Sec {s.section} • {s.year_of_study}
-                    </p>
-                  </div>
-                </div>
-                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${isPresent ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                  {isPresent ? 'Present Today' : 'Absent'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </main>
-  );
-}
+          ) : (
+            <div className="space-y-3">
+              <h1 className="text-xl font-bold text-center">Master Admin Portal</h1>
+              <p className="text-xs text-slate-400 text-center">
+                Manage pre-authorized faculty credentials and view all college attendance.
+              </p>
+              <input
+                type="password"
+                placeholder="Enter Master Admin PIN"
+                value={adminPin}
